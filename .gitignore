@@ -4,3 +4,4 @@ backup
 chroma
 .venv
 test_rag.py
+__pycache__
