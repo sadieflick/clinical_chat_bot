@@ -1,7 +1,8 @@
 *.pyc
 .DS_Store
 backup
-chroma
+json_vector_db
 .venv
 test_rag.py
 __pycache__
+*.log

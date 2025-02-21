@@ -1,82 +1,94 @@
-import argparse
 import os
 import shutil
-import pathlib
-import json
-import requests
-# from langchain.document_loaders.pdf import PyPDFDirectoryLoader
+from uuid import uuid4
 from langchain_community.document_loaders import JSONLoader
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_text_splitters import RecursiveJsonSplitter
 from langchain.schema.document import Document
 from get_embedding_function import get_embedding_function
-from langchain.vectorstores.chroma import Chroma
+from langchain_community.vectorstores.chroma import Chroma
+
+import logging
+logger = logging.getLogger(__name__)
+
+# TO DO: change to .env variables or config
+JSON_VECTOR_PATH = "json_vector_db"
+DATA_PATH = "./data/clinical_tables.json"
+MAIN_VECTOR_PATH = "main_vector_db"
 
 
-API_PATH = "api_vector_db"
-DATA_PATH = "data"
-VECTOR_PATH = "main_vector_db"
-
-
-def main():
-
-    # Check if the database should be cleared (using the --clear flag).
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--reset", action="store_true", help="Reset the database.")
-    args = parser.parse_args()
-    if args.reset:
-        print("✨ Clearing Database")
-        clear_database()
-
-    # Create (or update) the data store.
-    if not pathlib.Path('/api_vector_db').exists():
-        documents = load_documents()
-        # chunks = split_documents(documents)
-        add_to_api_vdb(documents)
+# Convert JSON list fields as strings for metadata in vectorstore
+def flatten_links(nested_list):
+    for i in range(len(nested_list)):
+        print(nested_list[i])
+        if isinstance(nested_list[i], list):
+            nested_list[i] = ": ".join(nested_list[i])
 
 
 # Define the metadata extraction function.
 def metadata_func(record: dict, metadata: dict) -> dict:
 
-    metadata["links"] = record.get("info_link_data")
+    links = record.get("info_link_data")
+    flatten_links(links)
+    links = ", ".join(links)
+
+    synonyms = record.get("synonyms")
+    flatten_links(synonyms)
+    synonyms = ", ".join(synonyms)
+
+    metadata["links"] = links
     metadata["primary_name"] = record.get("primary_name")
-    metadata["synonyms"] = record.get("synonyms")
+    metadata["synonyms"] = synonyms
     metadata["words"] = record.get("word_synonyms")
     metadata["id"] = record.get("key_id")
 
     return metadata
 
-def load_documents():
+# Put json data into a list of langchain Documents
+def load_documents() -> list[Document]:
     loader = JSONLoader(
-    file_path='./data/clinical_tables.json',
+    file_path=DATA_PATH,
     jq_schema='.[]',
     content_key="consumer_name",
     metadata_func=metadata_func
     )
 
     data = loader.load()
+
+    message = f"Loading JSON data into langchain Documents. \n Example document data: \n {data[0]}"
+    print(message)
+    logger.info(message)
+
     return data
 
 
 # def split_documents(documents: list[Document]):
 #     splitter = RecursiveJsonSplitter(max_chunk_size=300)
 #     json_chunks = splitter.split_json(json_data=json_data)
-#     json_chunks[0]
+#     print(json_chunks[0])
 
 #     return splitter.split_documents(documents)
 
 
-def add_to_api_vdb(chunks: list[Document]):
+def add_to_json_vectors(documents: list[Document]):
     # Load the existing database.
-    db = Chroma(
-        persist_directory=API_PATH, embedding_function=get_embedding_function()
+    vector_store = Chroma(
+        persist_directory=JSON_VECTOR_PATH, embedding_function=get_embedding_function()
     )
+    uuids = [str(uuid4()) for _ in range(len(documents))]
+    vector_store.add_documents(documents=documents, ids=uuids)
 
-def add_to_main_vdb(chunks: list[Document]):
+    message = f"Adding documents and UUIDs to json vector storage. \nExample uuid: {uuids[0]}, {uuids[1]}"
+    print(message)
+    logger.info(message)
+
+def add_to_main_vdb(documents: list[Document]):
     # Load the existing database.
-    db = Chroma(
-        persist_directory=VECTOR_PATH, embedding_function=get_embedding_function()
+    vector_store = Chroma(
+        persist_directory=MAIN_VECTOR_PATH, embedding_function=get_embedding_function()
     )
+    uuids = [str(uuid4()) for _ in range(len(documents))]
+    vector_store.add_documents(documents=documents, ids=uuids)
+
 
 #     # Calculate Page IDs.
 #     chunks_with_ids = calculate_chunk_ids(chunks)
@@ -132,8 +144,8 @@ def add_to_main_vdb(chunks: list[Document]):
 
 def clear_database():
 
-    if os.path.exists(VECTOR_PATH):
-        shutil.rmtree(VECTOR_PATH)
+    if os.path.exists(MAIN_VECTOR_PATH):
+        shutil.rmtree(MAIN_VECTOR_PATH)
 
 
 if __name__ == "__main__":
