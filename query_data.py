@@ -6,15 +6,19 @@ from langchain_community.llms.ollama import Ollama
 from get_embedding_function import get_embedding_function
 
 CHROMA_PATH = "chroma"
+API_PATH = "api_vector_db"
 
 PROMPT_TEMPLATE = """
-Answer the question based only on the following context:
+You are a helpful assistant that helps a support agent with answering patient questions about medical conditions. Answer the question based only on the following context:
 
 {context}
 
 ---
+{citations}
+Answer the following question based on the above context and citation links. If the context does not provide sufficient information to answer the question, provide the citation links: {question}
+"""
+INDEX_QUERY_TEMPLATE = """
 
-Answer the question based on the above context: {question}
 """
 
 
