@@ -1,5 +1,6 @@
 import argparse
 import logging
+from populate_vectorstore import load_documents, clear_database, add_to_json_vectors
 logger = logging.getLogger(__name__)
 
 def main():
