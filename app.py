@@ -24,3 +24,6 @@ def main():
 
         # chunks = split_documents(documents)
         add_to_json_vectors(documents)
+
+if __name__ == main:
+    main()
