@@ -1,6 +1,6 @@
 # Health Condition Assistant Bot (NOTE: IN DEVELOPMENT -- WIP)
 
-### A chatbot using minimal retrieval augmented generation (RAG) over a dataset of clinical conditions, designed to provide concise information summaries along with source links to verify the reliability of the answers.
+#### A chatbot using minimal retrieval augmented generation (RAG) over a dataset of clinical conditions, designed to provide concise information summaries along with source links to verify the reliability of the answers.
 
 Developed initially from the rag-tutorial project at https://github.com/pixegami (Thank you, pixelgami)
 
