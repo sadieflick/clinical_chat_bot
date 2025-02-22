@@ -1,8 +1,19 @@
+# Python
 *.pyc
-.DS_Store
-backup
-json_vector_db
-.venv
-test_rag.py
 __pycache__
 *.log
+
+# MacOs
+.DS_Store
+backup
+
+# vector dbs
+json_vector_db
+main_vector_db
+
+# environments
+.venv
+.env
+
+# chainlit
+.chainlit/

@@ -5,21 +5,20 @@ from langchain_community.document_loaders import JSONLoader
 from langchain_text_splitters import RecursiveJsonSplitter
 from langchain.schema.document import Document
 from get_embedding_function import get_embedding_function
-from langchain_community.vectorstores.chroma import Chroma
+from langchain_chroma import Chroma
 
 import logging
 logger = logging.getLogger(__name__)
 
 # TO DO: change to .env variables or config
-JSON_VECTOR_PATH = "json_vector_db"
-DATA_PATH = "./data/clinical_tables.json"
-MAIN_VECTOR_PATH = "main_vector_db"
+JSON_VECTOR_PATH = "../json_vector_db"
+DATA_PATH = "../data/clinical_tables.json"
+MAIN_VECTOR_PATH = "../main_vector_db"
 
 
 # Convert JSON list fields as strings for metadata in vectorstore
 def flatten_links(nested_list):
     for i in range(len(nested_list)):
-        print(nested_list[i])
         if isinstance(nested_list[i], list):
             nested_list[i] = ": ".join(nested_list[i])
 

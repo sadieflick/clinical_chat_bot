@@ -19,4 +19,5 @@ Developed initially from the rag-tutorial project at https://github.com/pixegami
     - ```ollama run llama3.2```
 - Navigate to localhost:1134 in your browser to check that it is running.
 - To pull model for embeddings:
+    - ```ollama pull llama3.2```
     - ```ollama pull nomic-embed-text```
