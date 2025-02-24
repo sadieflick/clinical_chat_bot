@@ -6,7 +6,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_community.llms.ollama import Ollama
 from get_embedding_function import get_embedding_function
 
-JSON_VECTOR_PATH = "api_vector_db"
+JSON_VECTOR_PATH = "../json_vector_db"
 DATA_PATH = "data"
 MAIN_VECTOR_PATH = "main_vector_db"
 
@@ -29,7 +29,7 @@ def query_rag(query_text: str):
     parsed_data = json.loads(response_text)
     results = []
     for condition in parsed_data['conditions']:
-        results.append(db.similarity_search_with_score(condition['primary_name'], k=5))
+        results.append(db.similarity_search_with_score(condition['primary_name']))
     print(results)
     # Search the DB.
     # db.similarity_search_with_score(response_text, k=5)
