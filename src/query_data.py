@@ -1,4 +1,5 @@
 import argparse
+import json
 from templates import PROMPT_TEMPLATE, TO_JSON_TEMPLATE
 from langchain_community.vectorstores import Chroma
 from langchain.prompts import ChatPromptTemplate
@@ -9,14 +10,6 @@ JSON_VECTOR_PATH = "api_vector_db"
 DATA_PATH = "data"
 MAIN_VECTOR_PATH = "main_vector_db"
 
-
-# def main():
-#     # Create CLI.
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("query_text", type=str, help="The query text.")
-#     args = parser.parse_args()
-#     query_text = args.query_text
-#     query_rag(query_text)
 
 
 def query_rag(query_text: str):
@@ -32,7 +25,17 @@ def query_rag(query_text: str):
     model = Ollama(model="llama3.2")
     response_text = model.invoke(prompt)
 
-    print(f"============= Llama Response:\n{response_text} ==============")
+    print(f'========== response_text ==========\n {response_text}\n===========================\n')
+    parsed_data = json.loads(response_text)
+    results = []
+    for condition in parsed_data['conditions']:
+        results.append(db.similarity_search_with_score(condition['primary_name'], k=5))
+    print(results)
+    # Search the DB.
+    # db.similarity_search_with_score(response_text, k=5)
+
+    print(f'========== similarity search results ==========\n {results}\n===========================\n')
+
 
     # # Search the DB.
     # results = db.similarity_search_with_score(query_text, k=5)
