@@ -24,10 +24,10 @@ def getResponse(prompt_text: str):
     # Return relevant dictionaries (vector similarity)
     api_search_data = jsonSimilaritySearch(llm_json)
 
-    # Get data from weblinks, chunk by web page, retain metadata
+    # Get data from weblinks, parse, chunk by web page, retain metadata
     api_response_data = fetchRelevantData(api_search_data)
 
-    # Embed chunks into main vectorDB with appropriate doc metadata
+    # Embed doc chunks into main vectorDB with appropriate doc metadata
     addEmbedChunks(api_response_data)
 
     # Prepare final response with 'sources' (weblinks) appended to the LLM reply
