@@ -88,7 +88,8 @@ def fetchRelevantData(vectors: list[Document]) -> list[Document]:
                 # parse for summary section
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
-                    section = soup.find(id="topsum_section")
+                    # section = soup.find(id="topsum_section")
+                    section = soup.article
                     content = section.get_text() if section else soup.get_text()
 
                     # add article and meta data
@@ -128,13 +129,15 @@ def addEmbedChunks(chunks: list[Document], path: str=MAIN_VECTOR_PATH):
 
     # # Only add documents that don't exist in the DB.
     new_chunks = []
+    new_chunk_ids = set()
     for chunk in chunks:
-        if chunk.metadata["id"] not in existing_ids:
+        chunk_id = chunk.metadata["id"]
+        if chunk_id not in existing_ids and chunk_id not in new_chunk_ids:
             new_chunks.append(chunk)
+            new_chunk_ids.add(chunk_id)
 
     if len(new_chunks):
         print(f"👉 Adding new documents: {len(new_chunks)}")
-        new_chunk_ids = [chunk.metadata["id"] for chunk in new_chunks]
         db.add_documents(new_chunks, ids=new_chunk_ids)
     else:
         print("✅ No new documents to add")
