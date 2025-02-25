@@ -18,21 +18,20 @@ MAIN_VECTOR_PATH = "main_vector_db"
 
 def getResponse(prompt_text: str):
 
-    # get guesses for relevant json vectors
+    # Get guesses for relevant json vectors
     llm_json = jsonifyPrompt(prompt_text)
 
-    # get search terms for relevant docs
+    # Return relevant dictionaries (vector similarity)
     api_search_data = jsonSimilaritySearch(llm_json)
 
-    # Get data context from external API (https://clinicaltables.nlm.nih.gov/api/conditions/v3)
-    #    format as a list of Documents
+    # Get data from weblinks, chunk by web page, retain metadata
     api_response_data = fetchRelevantData(api_search_data)
 
-    # Embed chunks into vectorDB with appropriate doc metadata
+    # Embed chunks into main vectorDB with appropriate doc metadata
     addEmbedChunks(api_response_data)
 
-    # get final response with metadata links from context
-    # using context template, original prompt and similarity search
+    # Prepare final response with 'sources' (weblinks) appended to the LLM reply
+    #    - uses similarity search, a prompt template, the original user prompt
     ragged_response = getRefinedResponse(prompt_text)
 
     return ragged_response
