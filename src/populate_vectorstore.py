@@ -1,5 +1,6 @@
 import os
 import shutil
+from pprint import pprint
 from uuid import uuid4
 from langchain_community.document_loaders import JSONLoader
 from langchain_text_splitters import RecursiveJsonSplitter
@@ -19,19 +20,19 @@ MAIN_VECTOR_PATH = "../main_vector_db"
 # Convert JSON list fields as strings for metadata in vectorstore
 def flatten_links(nested_list):
     for i in range(len(nested_list)):
-        if isinstance(nested_list[i], list):
-            nested_list[i] = ": ".join(nested_list[i])
-
+        nested_list[i] = nested_list[i][0]
+    return nested_list
 
 # Define the metadata extraction function.
-def metadata_func(record: dict, metadata: dict) -> dict:
+def load_clinical_tables_metadata(record: dict, metadata: dict) -> dict:
 
     links = record.get("info_link_data")
-    flatten_links(links)
+    links = '' if len(links) == 0 else flatten_links(links)
+    
     links = ", ".join(links)
 
     synonyms = record.get("synonyms")
-    flatten_links(synonyms)
+    # flatten_list(synonyms)
     synonyms = ", ".join(synonyms)
 
     metadata["links"] = links
@@ -39,11 +40,16 @@ def metadata_func(record: dict, metadata: dict) -> dict:
     metadata["synonyms"] = synonyms
     metadata["words"] = record.get("word_synonyms")
     metadata["id"] = record.get("key_id")
+    
+    if record.get('term_icd9_text'):
+        metadata['clinical_desc'] = record.get('term_icd9_text')
+    else:
+        metadata["clinical_desc"] = ''
 
     return metadata
 
 # Put json data into a list of langchain Documents
-def load_documents() -> list[Document]:
+def load_documents(metadata_func=load_clinical_tables_metadata) -> list[Document]:
     loader = JSONLoader(
     file_path=DATA_PATH,
     jq_schema='.[]',
@@ -91,7 +97,6 @@ def add_to_main_vdb(documents: list[Document]):
 
 
 def clear_database():
-
     if os.path.exists(MAIN_VECTOR_PATH):
         shutil.rmtree(MAIN_VECTOR_PATH)
 

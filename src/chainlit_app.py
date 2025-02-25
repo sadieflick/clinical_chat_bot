@@ -1,6 +1,6 @@
 import chainlit as cl
-from main import app
-from query_data import query_rag
+from rag_processing import getResponse
+
 
 
 @cl.on_chat_start
@@ -9,5 +9,5 @@ async def main():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    response = query_rag(message.content)
+    response = getResponse(message.content)
     await cl.Message(response).send()
