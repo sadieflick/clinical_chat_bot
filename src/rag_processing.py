@@ -26,6 +26,8 @@ def getResponse(prompt_text: str):
 
     # Get data from weblinks, parse, chunk by web page, retain metadata
     api_response_data = fetchRelevantData(api_search_data)
+    # if len(api_response_data): print(api_response_data[0])
+    # else: print("-----------------Did not fetch any data")
 
     # Embed doc chunks into main vectorDB with appropriate doc metadata
     addEmbedChunks(api_response_data)
@@ -54,49 +56,75 @@ def jsonifyPrompt(prompt_text: str):
     return response_text
 
     
-def jsonSimilaritySearch(response_text: str) -> list[Document]:
+def jsonSimilaritySearch(response_text: str) -> dict[Document]:
 
     parsed_data = json.loads(response_text)
-    results = []
+    related_vectors = {}
+    ids = []
 
     # Prepare vector storage access.
     embedding_function = get_embedding_function()
-    db = Chroma(persist_directory=JSON_VECTOR_PATH, embedding_function=embedding_function)
+    json_db = Chroma(persist_directory=JSON_VECTOR_PATH, embedding_function=embedding_function)
 
+    # Get all related json Document vectors
     for condition in parsed_data['conditions']:
-        results.append(db.similarity_search_with_score(condition['primary_name'], k=5))
+        print(f'============= Condition: {condition['primary_name']}============')
+        vectors: list[Document] = json_db.similarity_search_with_score(condition['primary_name'], k=5)
 
-    # print(f'========== json similarity search results ==========\n')
-    # pprint(results)
-    # print('\n===========================\n')
+        # Store related, and add condition id to ids list
+        for vector_tuple in vectors:
+            vector = vector_tuple[0]
+            related_vectors[vector.metadata['id']] = vector
+            ids.append(vector.metadata['id'])
+            
+    # pprint(related_vectors)
 
-    return results
+    db = Chroma(persist_directory=MAIN_VECTOR_PATH, embedding_function=embedding_function)
+    filter_dict = filter_dict = {"id": {"$in": ids}}
+    base_retriever = db.as_retriever(search_kwargs={'k': 10, 'filter': filter_dict})
+    main_db = base_retriever.invoke('')
 
-def fetchRelevantData(vectors: list[Document]) -> list[Document]:
+    print(main_db[0].metadata['id'])
+
+    for duplicate_vector in main_db:
+        dup_id = duplicate_vector.metadata['id']
+        if dup_id in related_vectors:
+            related_vectors.pop(dup_id)
+
+    print(f'========== json similarity search related_vectors ==========\n')
+    pprint(related_vectors)
+    print('\n===========================\n')
+
+    return related_vectors
+
+def fetchRelevantData(vectors: dict[Document]) -> list[Document]:
 
     
     # Get medical condition information from web links, preserving metadata
     docs = []
-    for vector_set in vectors:
-        for vector in vector_set:
 
-            # get html page
-            link = vector[0].metadata['links']
-            if len(link):
-                response = requests.get(link)
+    for key in vectors:
 
-                # parse for summary section
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    # section = soup.find(id="topsum_section")
-                    section = soup.article
-                    content = section.get_text() if section else soup.get_text()
+        # get html page
+        vector = vectors[key]
+        link = vector.metadata['links']
+        # print(link)
+        if len(link):
+            response = requests.get(link)
 
-                    # add article and meta data
-                    docs.append(Document(
-                                page_content=content,
-                                metadata={"source": link} | vector[0].metadata
-                            ))
+            # parse for summary section
+            if response.status_code == 200:
+                print("response is 200")
+                soup = BeautifulSoup(response.text, 'html.parser')
+                # section = soup.find(id="topsum_section")
+                section = soup.article
+                content = section.get_text() if section else soup.get_text()
+
+                # add article and meta data
+                docs.append(Document(
+                            page_content=content,
+                            metadata={"source": link} | vector.metadata
+                        ))
 
     return docs
     

@@ -1,4 +1,5 @@
 import chainlit as cl
+import asyncio
 from rag_processing import getResponse
 
 
@@ -9,5 +10,6 @@ async def main():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    response = getResponse(message.content)
+    response = await cl.make_async(getResponse)(message.content)
     await cl.Message(response).send()
+
