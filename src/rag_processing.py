@@ -24,17 +24,21 @@ def getResponse(prompt_text: str):
     # Return relevant dictionaries (vector similarity)
     api_search_data = jsonSimilaritySearch(llm_json)
 
+    # Validate relevance and remove unrelated search terms
+    remove_unrelated_conditions(api_search_data, prompt_text)
+
     # Get data from weblinks, parse, chunk by web page, retain metadata
     api_response_data = fetchRelevantData(api_search_data)
-    # if len(api_response_data): print(api_response_data[0])
-    # else: print("-----------------Did not fetch any data")
 
-    # Embed doc chunks into main vectorDB with appropriate doc metadata
+    # Embed any new doc chunks into main vectorDB with appropriate doc metadata
     addEmbedChunks(api_response_data)
+
+    # prepare document context for refined prompt
+    context = getDocsFromLLMTerms(api_search_data)
 
     # Prepare final response with 'sources' (weblinks) appended to the LLM reply
     #    - uses similarity search, a prompt template, the original user prompt
-    ragged_response = getRefinedResponse(prompt_text)
+    ragged_response = getRefinedResponse(prompt_text, context)
 
     return ragged_response
 
@@ -68,7 +72,7 @@ def jsonSimilaritySearch(response_text: str) -> dict[Document]:
 
     # Get all related json Document vectors
     for condition in parsed_data['conditions']:
-        print(f'============= Condition: {condition['primary_name']}============')
+        # print(f'============= Condition: {condition['primary_name']}============')
         vectors: list[Document] = json_db.similarity_search_with_score(condition['primary_name'], k=5)
 
         # Store related, and add condition id to ids list
@@ -79,70 +83,92 @@ def jsonSimilaritySearch(response_text: str) -> dict[Document]:
             
     # pprint(related_vectors)
 
-    db = Chroma(persist_directory=MAIN_VECTOR_PATH, embedding_function=embedding_function)
-    filter_dict = filter_dict = {"id": {"$in": ids}}
-    base_retriever = db.as_retriever(search_kwargs={'k': 10, 'filter': filter_dict})
-    main_db = base_retriever.invoke('')
+    
 
-    print(main_db[0].metadata['id'])
-
-    for duplicate_vector in main_db:
-        dup_id = duplicate_vector.metadata['id']
-        if dup_id in related_vectors:
-            related_vectors.pop(dup_id)
-
-    print(f'========== json similarity search related_vectors ==========\n')
-    pprint(related_vectors)
-    print('\n===========================\n')
+    # print(f'========== json similarity search related_vectors ==========\n')
+    # pprint(related_vectors)
+    # print('\n===========================\n')
+    
 
     return related_vectors
 
-def fetchRelevantData(vectors: dict[Document]) -> list[Document]:
-
-    
-    # Get medical condition information from web links, preserving metadata
-    docs = []
+# Use LLM to check relevance of search terms and remove unrelated terms
+def remove_unrelated_conditions(vectors: dict[Document], prompt_text) -> bool:
+    context_data = {}
+    keys = {}
 
     for key in vectors:
-
-        # get html page
         vector = vectors[key]
-        link = vector.metadata['links']
-        # print(link)
-        if len(link):
-            response = requests.get(link)
+        context_data[vector.metadata["primary_name"]] = vector.metadata["clinical_desc"]
+        keys[vector.metadata["primary_name"]] = vector.metadata["id"]
 
-            # parse for summary section
-            if response.status_code == 200:
-                print("response is 200")
-                soup = BeautifulSoup(response.text, 'html.parser')
-                # section = soup.find(id="topsum_section")
-                section = soup.article
-                content = section.get_text() if section else soup.get_text()
+    # Remove conditions that are assessed as unrelated based on general LLM training
+    prompt_template = ChatPromptTemplate.from_template(GET_UNRELATED_INDEXES)
+    prompt = prompt_template.format(prompt=prompt_text, related_conditions=context_data)
+    model = OllamaLLM(model="llama3.2")
+    response_text = model.invoke(prompt)
 
-                # add article and meta data
-                docs.append(Document(
-                            page_content=content,
-                            metadata={"source": link} | vector.metadata
-                        ))
+    removal_list = []
+    if response_text != 'None':
+        removal_list = response_text.split(', ')
+    print(f'====== KEYS to REMOVE: {removal_list} =====')
+    print(f'Original vectors: \n{[vectors[key].metadata['primary_name'] for key in vectors]}')
 
-    return docs
+    for key in removal_list:
+        condition_id = keys[key]
+        vectors.pop(condition_id)
+
+    print(f'NEW LIST: \n{[vectors[key].metadata['primary_name'] for key in vectors]}')
+
+    return True
+
     
 
-def split_documents(documents: list[Document]):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=80,
-        length_function=len,
-        is_separator_regex=False,
-    )
-    return text_splitter.split_documents(documents)
+def fetchRelevantData(related_vectors: dict[Document]) -> dict[Document]:
 
-# def chunkRawRespDocs(resp: list[dict]) -> list[Document]:
+    # Get ids of those docs already in the the vector db
+    db = Chroma(persist_directory=MAIN_VECTOR_PATH, embedding_function=get_embedding_function())
+    filter_dict = filter_dict = {"id": {"$in": list(related_vectors.keys())}}
+    base_retriever = db.as_retriever(search_kwargs={'k': 10, 'filter': filter_dict})
+    main_db = base_retriever.invoke('')
+    v_ids = [vector.metadata['id'] for vector in main_db]
 
-#     pass
+    docs = {}
 
-def addEmbedChunks(chunks: list[Document], path: str=MAIN_VECTOR_PATH):
+
+    # Add only new docs to the vector DB
+    for key, vector in related_vectors.items():
+        vector_id = vector.metadata['id']
+        if vector_id not in v_ids:
+        
+            # Get medical condition information from web links, preserving metadata
+            vector = related_vectors[key]
+            link = vector.metadata['links']
+
+            if len(link):
+                response = requests.get(link)
+
+                # parse for summary section
+                if response.status_code == 200:
+                    print("response is 200")
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    # section = soup.find(id="topsum_section")
+                    section = soup.article
+                    content = section.get_text() if section else soup.get_text()
+
+                    # add article and meta data
+                    docs[vector.metadata['id']] = (Document(
+                                page_content=content,
+                                metadata=vector.metadata
+                            ))
+
+    return docs
+
+    
+
+def addEmbedChunks(chunks: dict[Document], path: str=MAIN_VECTOR_PATH):
+
+    print(f'=========== INFO DOCS FROM WEB: \n{[chunks[chunk].metadata['primary_name'] for chunk in chunks]}')
     
     # Load the existing database.
     db = Chroma(
@@ -152,15 +178,32 @@ def addEmbedChunks(chunks: list[Document], path: str=MAIN_VECTOR_PATH):
 
     # # Add or Update the documents.
     existing_items = db.get(include=[])  # IDs are always included by default
-    existing_ids = set(existing_items["ids"])
-    print(f"Number of existing documents in DB: {len(existing_ids)}")
+    existing_metadata = set()
+    
+    print(existing_items)
+
+    # get a list of records to compare condition ids
+    if len(existing_items['ids']):
+        existing_metadata = set(existing_items)
+    
+    print(f"Number of existing documents in DB: {len(existing_metadata)}\n")
+    print(f"==========METADATA LIST: \n{existing_metadata}")
+
+    # Get list of duplicate records
+    filter_dict = filter_dict = {"id": {"$in": list(chunks.keys())}}
+    dup_vectors = db.get(where=filter_dict, include=["metadatas"])
+
+    print(f'===========DUPLICATE VECT: \n {dup_vectors}')
+    
 
     # # Only add documents that don't exist in the DB.
     new_chunks = []
     new_chunk_ids = set()
-    for chunk in chunks:
-        chunk_id = chunk.metadata["id"]
-        if chunk_id not in existing_ids and chunk_id not in new_chunk_ids:
+    
+    for key, chunk in chunks.items():
+        chunk_id = chunk.id
+        print(chunk.metadata)
+        if chunk.metadata not in dup_vectors['metadatas'] and chunk_id not in new_chunk_ids:
             new_chunks.append(chunk)
             new_chunk_ids.add(chunk_id)
 
@@ -170,17 +213,24 @@ def addEmbedChunks(chunks: list[Document], path: str=MAIN_VECTOR_PATH):
     else:
         print("✅ No new documents to add")
 
-# Ready context for template as string (optional 2nd sim search, chunks back to str, adds metadata)
-def getRefinedResponse(query_text) -> str:
-
-    # Load the existing database.
+def getDocsFromLLMTerms(docs: dict[Document]) -> dict:
+    # Load Doc DB
     db = Chroma(
-        persist_directory=MAIN_VECTOR_PATH, embedding_function=get_embedding_function()
+    persist_directory=MAIN_VECTOR_PATH, embedding_function=get_embedding_function()
     )
-    # Search the DB.
-    results = db.similarity_search_with_score(query_text, k=5)
+    
+    # Get corresponding docs to create context
+    filter_dict = filter_dict = {"id": {"$in": list(docs.keys())}}
+    context_docs = db.get(where=filter_dict, include=["documents", "metadatas"])
 
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+    return context_docs
+
+# Ready doc context for prompt template as string
+def getRefinedResponse(query_text, data=None) -> str:
+
+    print(f'======== FINAL CONTEXT DOCS METADATA: \n{data['metadatas'][0]} =========')
+
+    context_text = "\n\n---\n\n".join([doc for doc in data['documents']])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = prompt_template.format(context=context_text, question=query_text)
     # print(prompt)
@@ -188,16 +238,11 @@ def getRefinedResponse(query_text) -> str:
     model = OllamaLLM(model="llama3.2")
     response_text = model.invoke(prompt)
 
-    sources = [doc.metadata.get("links", None) for doc, _score in results]
-    formatted_response = f"Response: {response_text}\nSources: {sources}"
+    sources = [doc.get("links", None) for doc in data['metadatas']]
+    formatted_response = f"Response: {response_text}\n\nThese are the sources I used in answering your question: \n{sources}"
     print(formatted_response)
     
     return formatted_response
-
-# def getRefinedResponse(prompt: str, context: str, static_template=PROMPT_TEMPLATE):
-#     # call LLM with template which adds weblink references, 
-#     # other metadata and appropriate constraints
-#     pass
 
 
 
