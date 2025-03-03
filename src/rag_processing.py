@@ -56,8 +56,24 @@ def jsonifyPrompt(prompt_text: str):
     print(prompt_text)
     pprint(response_text)
     print('\n===========================\n')
-    
-    return response_text
+
+    try:
+        json_object = json.loads(response_text)
+        return json_object
+    except json.JSONDecodeError as e:
+         return f"Error decoding JSON: {e}"
+
+    # prompt_template = ChatPromptTemplate.from_template("""
+    # Please take the following text, verify that it is in syntactically correct json format, and if it is, 
+    # just answer this prompt with 'valid', otherwise, please correct any errors and respond only with the exact data from the text, but with
+    # correct json syntax / format. Please omit any next-line formatting.
+    # {json}
+    # """)
+    # prompt = prompt_template.format(json=response_text)
+    # model = OllamaLLM(model="llama3.2")
+    # response_text = model.invoke(prompt)
+    finally:
+        return response_text
 
     
 def jsonSimilaritySearch(response_text: str) -> dict[Document]:
@@ -93,7 +109,7 @@ def jsonSimilaritySearch(response_text: str) -> dict[Document]:
     return related_vectors
 
 # Use LLM to check relevance of search terms and remove unrelated terms
-def remove_unrelated_conditions(vectors: dict[Document], prompt_text) -> bool:
+def remove_unrelated_conditions(vectors: dict[Document], prompt_text) -> dict[Document]:
     context_data = {}
     keys = {}
 
@@ -120,7 +136,7 @@ def remove_unrelated_conditions(vectors: dict[Document], prompt_text) -> bool:
 
     print(f'NEW LIST: \n{[vectors[key].metadata['primary_name'] for key in vectors]}')
 
-    return True
+    return vectors
 
     
 
@@ -157,10 +173,10 @@ def fetchRelevantData(related_vectors: dict[Document]) -> dict[Document]:
                     content = section.get_text() if section else soup.get_text()
 
                     # add article and meta data
-                    docs[vector.metadata['id']] = (Document(
+                    docs[vector.id] = Document(
                                 page_content=content,
                                 metadata=vector.metadata
-                            ))
+                            )
 
     return docs
 
@@ -191,19 +207,21 @@ def addEmbedChunks(chunks: dict[Document], path: str=MAIN_VECTOR_PATH):
 
     # Get list of duplicate records
     filter_dict = filter_dict = {"id": {"$in": list(chunks.keys())}}
-    dup_vectors = db.get(where=filter_dict, include=["metadatas"])
+    # dup_vectors = db.get(where=filter_dict, include=["metadatas"])
+    dup_vectors = db.get_by_ids(list(chunks.keys()))
 
     print(f'===========DUPLICATE VECT: \n {dup_vectors}')
     
 
     # # Only add documents that don't exist in the DB.
+    dup_keys = [doc.id for doc in dup_vectors]
     new_chunks = []
     new_chunk_ids = set()
     
     for key, chunk in chunks.items():
         chunk_id = chunk.id
-        print(chunk.metadata)
-        if chunk.metadata not in dup_vectors['metadatas'] and chunk_id not in new_chunk_ids:
+        # print(chunk.metadata)
+        if chunk_id not in dup_keys and chunk_id not in new_chunk_ids:
             new_chunks.append(chunk)
             new_chunk_ids.add(chunk_id)
 
@@ -214,6 +232,8 @@ def addEmbedChunks(chunks: dict[Document], path: str=MAIN_VECTOR_PATH):
         print("✅ No new documents to add")
 
 def getDocsFromLLMTerms(docs: dict[Document]) -> dict:
+    print(f'========= SEARCH key ids AT FETCH ========\n {docs.keys()}')
+
     # Load Doc DB
     db = Chroma(
     persist_directory=MAIN_VECTOR_PATH, embedding_function=get_embedding_function()
@@ -221,14 +241,16 @@ def getDocsFromLLMTerms(docs: dict[Document]) -> dict:
     
     # Get corresponding docs to create context
     filter_dict = filter_dict = {"id": {"$in": list(docs.keys())}}
-    context_docs = db.get(where=filter_dict, include=["documents", "metadatas"])
+    context_docs = db.get(where=filter_dict, include=["documents", "metadatas"], limit=10)
+
+    print(f'======== getting docs... : \n{[md for md in context_docs['ids']]} =========')
 
     return context_docs
 
 # Ready doc context for prompt template as string
 def getRefinedResponse(query_text, data=None) -> str:
 
-    print(f'======== FINAL CONTEXT DOCS METADATA: \n{data['metadatas'][0]} =========')
+    print(f'======== FINAL CONTEXT DOCS METADATA: \n{[md['primary_name'] for md in data['metadatas']]} =========')
 
     context_text = "\n\n---\n\n".join([doc for doc in data['documents']])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
