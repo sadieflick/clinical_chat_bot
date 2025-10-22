@@ -1,4 +1,4 @@
-# Health Condition Assistant Bot (NOTE: IN DEVELOPMENT -- WIP)
+# Health Condition Assistant Bot
 
 #### A chatbot using minimal retrieval augmented generation (RAG) over a dataset of clinical conditions, designed to provide concise information summaries along with source links to verify the reliability of the answers.
 
